@@ -1,0 +1,14 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.intel.llmd">
+    <method name="summarize">
+      <arg type="s" name="text" direction="in"/>
+      <arg type="s" name="summary" direction="out"/>
+    </method>
+    <method name="summarize_stream">
+      <arg type="s" name="text" direction="in"/>
+      <arg type="as" name="streamed_tokens" direction="out"/>
+    </method>
+  </interface>
+</node>
