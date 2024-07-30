@@ -1,23 +1,22 @@
-import dbus
-from gi.repository import GLib
-from llm_config import SUPPORTED_LLM_MODELS
-import torch
-from threading import Event, Thread
-from typing import List, Tuple
-from optimum.intel import OVModelForCausalLM
+from __future__ import annotations
 
-import dbus.service
+from threading import Event
+from threading import Thread
+from typing import List
+from typing import Tuple
+
 import dbus.mainloop.glib
+import dbus.service
+import torch
+from gi.repository import GLib
+from optimum.intel import OVModelForCausalLM
+from transformers import AutoConfig
+from transformers import AutoTokenizer
+from transformers import StoppingCriteria
+from transformers import StoppingCriteriaList
+from transformers import TextIteratorStreamer
 
-
-
-from transformers import (
-    AutoTokenizer,
-    AutoConfig,
-    StoppingCriteria,
-    StoppingCriteriaList,
-    TextIteratorStreamer,
-)
+from llm_config import SUPPORTED_LLM_MODELS
 
 
 class GenAI:
@@ -64,18 +63,27 @@ class GenAI:
         self.model_ids = list(SUPPORTED_LLM_MODELS[self.model_language])
         self.model_id = model_id
         self.model_configuration = SUPPORTED_LLM_MODELS[self.model_language][self.model_id]
-        self.model_dir = "/home/intel/llmd/phi-3-mini-instruct/FP16"  # TODO: update the dir
-        self.ov_config = {"PERFORMANCE_HINT": "LATENCY", "NUM_STREAMS": "1", "CACHE_DIR": ""}
-        self.model_name = self.model_configuration["model_id"]
+        self.model_dir = '/home/intel/llmd/phi-3-mini-instruct/FP16'  # TODO: update the dir
+        self.ov_config = {
+            'PERFORMANCE_HINT': 'LATENCY',
+            'NUM_STREAMS': '1', 'CACHE_DIR': '',
+        }
+        self.model_name = self.model_configuration['model_id']
 
-        self.text_processor = self.model_configuration.get("partial_text_processor", self.default_partial_text_processor)
+        self.text_processor = self.model_configuration.get(
+            'partial_text_processor', self.default_partial_text_processor,
+        )
         self.max_new_tokens = 128
-        self.tok = AutoTokenizer.from_pretrained(self.model_dir, trust_remote_code=True)
+        self.tok = AutoTokenizer.from_pretrained(
+            self.model_dir, trust_remote_code=True,
+        )
         self.ov_model = OVModelForCausalLM.from_pretrained(
             self.model_dir,
-            device="CPU",
+            device='CPU',
             ov_config=self.ov_config,
-            config=AutoConfig.from_pretrained(self.model_dir, trust_remote_code=True),
+            config=AutoConfig.from_pretrained(
+                self.model_dir, trust_remote_code=True,
+            ),
             trust_remote_code=True,
         )
 
@@ -83,19 +91,27 @@ class GenAI:
         self.top_k = top_k
         self.top_p = top_p
         self.repetition_penalty = repetition_penalty
-        self.start_message = self.model_configuration["start_message"]
-        self.history_template = self.model_configuration.get("history_template")
-        self.current_message_template = self.model_configuration.get("current_message_template")
-        self.stop_tokens = self.model_configuration.get("stop_tokens")
+        self.start_message = self.model_configuration['start_message']
+        self.history_template = self.model_configuration.get(
+            'history_template',
+        )
+        self.current_message_template = self.model_configuration.get(
+            'current_message_template',
+        )
+        self.stop_tokens = self.model_configuration.get('stop_tokens')
         if self.stop_tokens is not None:
             if isinstance(self.stop_tokens[0], str):
-                self.stop_tokens = self.tok.convert_tokens_to_ids(self.stop_tokens)
+                self.stop_tokens = self.tok.convert_tokens_to_ids(
+                    self.stop_tokens,
+                )
 
             self.stop_tokens = [GenAI.StopOnTokens(self.stop_tokens)]
 
-        self.tokenizer_kwargs = self.model_configuration.get("tokenizer_kwargs", {})
+        self.tokenizer_kwargs = self.model_configuration.get(
+            'tokenizer_kwargs', {},
+        )
 
-    def convert_history_to_token(self, history: List[Tuple[str, str]]):
+    def convert_history_to_token(self, history: list[tuple[str, str]]):
         """
         Convert the conversation history to input tokens.
 
@@ -105,27 +121,32 @@ class GenAI:
         Returns:
             torch.LongTensor: The input tokens.
         """
-        print(f"[DEBUG] history_template= {self.history_template}")
-        print(f"[DEBUG]  start_message= {self.start_message}")
-        print(f"[DEBUG] history = {history}")
-        text = self.start_message + "".join(
-            ["".join([self.history_template.format(num=round, user=item[0], assistant=item[1])]) for round, item in
-             enumerate(history[:-1])]
-        )
-        text += "".join(
+        print(f'[DEBUG] history_template= {self.history_template}')
+        print(f'[DEBUG]  start_message= {self.start_message}')
+        print(f'[DEBUG] history = {history}')
+        text = self.start_message + ''.join(
             [
-                "".join(
+                ''.join([self.history_template.format(num=round, user=item[0], assistant=item[1])]) for round, item in
+                enumerate(history[:-1])
+            ],
+        )
+        text += ''.join(
+            [
+                ''.join(
                     [
                         self.current_message_template.format(
                             num=len(history) + 1,
                             user=history[-1][0],
                             assistant=history[-1][1],
-                        )
-                    ]
-                )
-            ]
+                        ),
+                    ],
+                ),
+            ],
         )
-        input_token = self.tok(text, return_tensors="pt", **self.tokenizer_kwargs).input_ids
+        input_token = self.tok(
+            text, return_tensors='pt',
+            **self.tokenizer_kwargs,
+        ).input_ids
         return input_token
 
     def default_partial_text_processor(self, partial_text: str, new_text: str):
@@ -156,7 +177,9 @@ class GenAI:
         if input_ids.shape[1] > 2000:
             history = [history[-1]]
             input_ids = self.convert_history_to_token(history)
-        streamer = TextIteratorStreamer(self.tok, timeout=30.0, skip_prompt=True, skip_special_tokens=True)
+        streamer = TextIteratorStreamer(
+            self.tok, timeout=30.0, skip_prompt=True, skip_special_tokens=True,
+        )
         generate_kwargs = dict(
             input_ids=input_ids,
             max_new_tokens=self.max_new_tokens,
@@ -168,7 +191,9 @@ class GenAI:
             streamer=streamer,
         )
         if self.stop_tokens is not None:
-            generate_kwargs["stopping_criteria"] = StoppingCriteriaList(self.stop_tokens)
+            generate_kwargs['stopping_criteria'] = StoppingCriteriaList(
+                self.stop_tokens,
+            )
 
         stream_complete = Event()
 
@@ -182,13 +207,13 @@ class GenAI:
 
         t1 = Thread(target=generate_and_signal_complete)
         t1.start()
-        partial_text = ""
+        partial_text = ''
 
         for new_text in streamer:
-            print(f"new text: {new_text}")
+            print(f'new text: {new_text}')
             partial_text = self.text_processor(partial_text, new_text)
             history[-1][1] = partial_text
-            print(f"DEBUG {history}")
+            print(f'DEBUG {history}')
         return history[-1][1]
 
 
@@ -204,9 +229,11 @@ class LLMDService(dbus.service.Object):
         """
         Initialize the LLMDService class.
         """
-        bus_name = dbus.service.BusName('com.intel.llmd', bus=dbus.SessionBus())
+        bus_name = dbus.service.BusName(
+            'com.intel.llmd', bus=dbus.SessionBus(),
+        )
         dbus.service.Object.__init__(self, bus_name, '/com/intel/llmd')
-        self.genai = GenAI("phi-3-mini-instruct")
+        self.genai = GenAI('phi-3-mini-instruct')
 
     @dbus.service.method('com.intel.llmd', in_signature='s', out_signature='s')
     def generate(self, text):
@@ -221,7 +248,7 @@ class LLMDService(dbus.service.Object):
         """
         text = [[text, '']]
         output = self.genai.LLMGenerator(text)
-        print(f"LLMD returned: {output}")
+        print(f'LLMD returned: {output}')
         return output
 
     @dbus.service.method('com.intel.llmd', out_signature='as')
@@ -239,5 +266,5 @@ if __name__ == '__main__':
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     service = LLMDService()
     loop = GLib.MainLoop()
-    print("LLMD Service Running...")
+    print('LLMD Service Running...')
     loop.run()
