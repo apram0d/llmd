@@ -1,0 +1,3 @@
+- multi client handling
+- cache already compiled model
+- implement handler close to free mem
